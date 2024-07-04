@@ -1,10 +1,10 @@
-﻿using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
+﻿using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
-using System.Reflection.Emit;
 
 namespace app.Data
 {
-    public class AuthDbContext : IdentityDbContext
+    public class AuthDbContext : IdentityDbContext<IdentityUser>
     {
         public AuthDbContext(DbContextOptions<AuthDbContext> options) : base(options)
         {
@@ -16,7 +16,7 @@ namespace app.Data
 
             // Definir o schema padrão para "Sistema"
             builder.HasDefaultSchema("Sistema");
-            base.OnModelCreating(builder);
+
             // Outras personalizações de modelo podem ser colocadas aqui
         }
     }

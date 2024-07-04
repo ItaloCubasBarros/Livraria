@@ -1,9 +1,10 @@
-﻿using Microsoft.AspNetCore.Mvc;
-using app.BE;
-using app.Data;
+﻿using app.Data;
 using app.DTO;
-using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 
 namespace app.Controllers
@@ -12,72 +13,97 @@ namespace app.Controllers
     [ApiController]
     public class EmprestimoController : ControllerBase
     {
-        private readonly EmprestimoBE _be;
         private readonly AppDbContext _context;
-        private readonly AuthBE _auth;
 
-        public EmprestimoController(EmprestimoBE be, AppDbContext context, AuthBE auth)
+        public EmprestimoController(AppDbContext context)
         {
-            _be = be ?? throw new ArgumentNullException(nameof(be), "EmprestimoBE não pode ser nulo.");
-            _context = context ?? throw new ArgumentNullException(nameof(context), "AppDbContext não pode ser nulo.");
-            _auth = auth ?? throw new ArgumentNullException(nameof(auth), "AuthBE não pode ser nulo.");
-        }
-
-
-
-
-
-
-        private string ExtractAuthToken()
-        {
-            if (HttpContext.Request.Headers.TryGetValue("Authorization", out var authHeader))
-            {
-                var tokenParts = authHeader.ToString().Split(' ');
-                if (tokenParts.Length == 2 && tokenParts[0].Equals("Bearer", StringComparison.OrdinalIgnoreCase))
-                {
-                    return tokenParts[1].Trim('"');
-                }
-            }
-            return null;
+            _context = context;
         }
 
         // GET: api/Emprestimo
         [HttpGet]
-        public async Task<IActionResult> GetAll([FromQuery] EmprestimoDTO dto)
+        public async Task<ActionResult<IEnumerable<EmprestimoDTO>>> GetEmprestimos()
         {
-            try
-            {
-                var token = ExtractAuthToken();
+            return await _context.Emprestimos
+                .Select(e => new EmprestimoDTO
+                {
+                    Id = e.Id,
 
-                _context.BeginTransaction();
-                var response = await _be.GetAll(dto);
-                _context.Commit();
-                return Ok(response);
-            }
-            catch (Exception ex)
-            {
-                return BadRequest(ex.Message);
-            }
+                    Aluno = e.Aluno,
+                    Livro = e.Livro
+                })
+                .ToListAsync();
         }
 
         // GET: api/Emprestimo/5
         [HttpGet("{id}")]
-        public async Task<IActionResult> GetById(long id)
+        public async Task<ActionResult<EmprestimoDTO>> GetEmprestimoById(long id)
+        {
+            var emprestimo = await _context.Emprestimos.FindAsync(id);
+
+            if (emprestimo == null)
+            {
+                return NotFound();
+            }
+
+            return new EmprestimoDTO
+            {
+                Id = emprestimo.Id,
+                Aluno = emprestimo.Aluno,
+                Livro = emprestimo.Livro
+            };
+        }
+
+        [HttpPost]
+        public async Task<ActionResult<EmprestimoDTO>> PostEmprestimo(EmprestimoDTO emprestimoDTO)
         {
             try
             {
-                var token = ExtractAuthToken();
+                var aluno = await _context.Alunos.FindAsync(emprestimoDTO.Aluno.Id);
+                var livro = await _context.Livros.FindAsync(emprestimoDTO.Livro.Id);
 
-                _context.BeginTransaction();
-                var response = await _be.GetById(id);
-                _context.Commit();
 
-                if (response == null)
+
+                if (emprestimoDTO.Aluno == null || emprestimoDTO.Livro == null)
                 {
-                    return NotFound();
+                    return BadRequest("Aluno ou livro não selecionado.");
                 }
 
-                return Ok(response);
+                var novoEmprestimo = new EmprestimoDTO
+                {
+                    Aluno = aluno,
+                    Livro = livro
+                };
+
+                _context.Emprestimos.Add(novoEmprestimo);
+                await _context.SaveChangesAsync();
+
+                // Criar um EmprestimoDTO para retornar com os dados corretos
+                var emprestimoDtoToReturn = new EmprestimoDTO
+                {
+                    Id = novoEmprestimo.Id,
+                    Aluno = new AlunoDTO
+                    {
+                        Id = novoEmprestimo.Aluno.Id,
+                        Nome = novoEmprestimo.Aluno.Nome,
+                        CPF = novoEmprestimo.Aluno.CPF,
+                        Email = novoEmprestimo.Aluno.Email,
+                        Telefone = novoEmprestimo.Aluno.Telefone,
+                        Endereco = novoEmprestimo.Aluno.Endereco,
+                        Sexo = novoEmprestimo.Aluno.Sexo
+                        // Adicione outras propriedades de AlunoDTO conforme necessário
+                    },
+                    Livro = new LivroDTO
+                    {
+                        Id = novoEmprestimo.Livro.Id,
+                        Titulo = novoEmprestimo.Livro.Titulo,
+                        Autor = novoEmprestimo.Livro.Autor,
+                        Genero = novoEmprestimo.Livro.Genero
+                        // Adicione outras propriedades de LivroDTO conforme necessário
+                    }
+                };
+
+                return CreatedAtAction(nameof(GetEmprestimoById), new { id = novoEmprestimo.Id }, emprestimoDtoToReturn);
             }
             catch (Exception ex)
             {
@@ -85,48 +111,31 @@ namespace app.Controllers
             }
         }
 
-        // POST: api/Emprestimo
-        [HttpPost]
-        public async Task<IActionResult> Post([FromBody] EmprestimoDTO dto)
-        {
-            try
-            {
-                var token = ExtractAuthToken();
 
-                _context.BeginTransaction();
-                var id = await _be.Insert(dto);
-                _context.Commit();
-                return CreatedAtAction(nameof(GetById), new { id }, dto);
-            }
-            catch (Exception ex)
-            {
-                return BadRequest(ex.Message);
-            }
-        }
+
 
         // PUT: api/Emprestimo/5
         [HttpPut("{id}")]
-        public async Task<IActionResult> Put(long id, [FromBody] EmprestimoDTO dto)
+        public async Task<IActionResult> PutEmprestimo(long id, EmprestimoDTO emprestimoDTO)
         {
-            if (id != dto.Id)
+            if (id != emprestimoDTO.Id)
             {
-                return BadRequest("O Id do Emprestimo no corpo da requisição não corresponde ao Id informado na URL.");
+                return BadRequest();
             }
+
+            var emprestimo = await _context.Emprestimos.FindAsync(id);
+            if (emprestimo == null)
+            {
+                return NotFound();
+            }
+
+            emprestimo.Aluno = emprestimoDTO.Aluno ?? emprestimo.Aluno;
+            emprestimo.Livro = emprestimoDTO.Livro ?? emprestimo.Livro;
 
             try
             {
-                var token = ExtractAuthToken();
-
-                _context.BeginTransaction();
-                var result = await _be.Update(dto);
-                _context.Commit();
-
-                if (result == 0)
-                {
-                    return NotFound();
-                }
-
-                return Ok(dto);
+                await _context.SaveChangesAsync();
+                return NoContent();
             }
             catch (Exception ex)
             {
@@ -136,22 +145,19 @@ namespace app.Controllers
 
         // DELETE: api/Emprestimo/5
         [HttpDelete("{id}")]
-        public async Task<IActionResult> Delete(long id)
+        public async Task<IActionResult> DeleteEmprestimo(long id)
         {
-            try
+            var emprestimo = await _context.Emprestimos.FindAsync(id);
+            if (emprestimo == null)
             {
-                var token = ExtractAuthToken();
-
-                _context.BeginTransaction();
-                await _be.Delete(id);
-                _context.Commit();
-
-                return NoContent();
+                return NotFound();
             }
-            catch (Exception ex)
-            {
-                return BadRequest(ex.Message);
-            }
+
+            _context.Emprestimos.Remove(emprestimo);
+            await _context.SaveChangesAsync();
+
+            return NoContent();
         }
     }
+
 }

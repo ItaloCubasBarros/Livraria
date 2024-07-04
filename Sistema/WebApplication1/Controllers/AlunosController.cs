@@ -13,56 +13,56 @@ namespace app.Controllers
 {
     [Route("api/[controller]")]
     [ApiController]
-    public class LivroController : ControllerBase
+    public class AlunoController : ControllerBase
     {
         private readonly AppDbContext _dbcontext;
 
-        public LivroController(AppDbContext dbcontext)
+        public AlunoController(AppDbContext dbcontext)
         {
             _dbcontext = dbcontext;
         }
 
-        // GET: api/Livro
+        // GET: api/Aluno
         [HttpGet]
-        public async Task<ActionResult<IEnumerable<LivroDTO>>> GetLivros()
+        public async Task<ActionResult<IEnumerable<AlunoDTO>>> GetAlunos()
         {
-            return await _dbcontext.Livros.ToListAsync();
+            return await _dbcontext.Alunos.ToListAsync();
         }
 
-        // GET: api/Livro/5
+        // GET: api/Aluno/5
         [HttpGet("{id}")]
-        public async Task<ActionResult<LivroDTO>> GetLivroById(int id)
+        public async Task<ActionResult<AlunoDTO>> GetAlunoById(int id)
         {
-            var livro = await _dbcontext.Livros.FindAsync(id);
+            var Aluno = await _dbcontext.Alunos.FindAsync(id);
 
-            if (livro == null)
+            if (Aluno == null)
             {
                 return NotFound();
             }
 
-            return livro;
+            return Aluno;
         }
 
-        // POST: api/Livro
+        // POST: api/Aluno
         [HttpPost]
-        public async Task<ActionResult<LivroDTO>> PostLivro(LivroDTO livro)
+        public async Task<ActionResult<AlunoDTO>> PostAluno(AlunoDTO Aluno)
         {
-            _dbcontext.Livros.Add(livro);
+            _dbcontext.Alunos.Add(Aluno);
             await _dbcontext.SaveChangesAsync();
 
-            return CreatedAtAction(nameof(GetLivroById), new { id = livro.Id }, livro);
+            return CreatedAtAction(nameof(GetAlunoById), new { id = Aluno.Id }, Aluno);
         }
 
-        // PUT: api/Livro/5
+        // PUT: api/Aluno/5
         [HttpPut("{id}")]
-        public async Task<IActionResult> PutLivro(int id, LivroDTO livro)
+        public async Task<IActionResult> PutAluno(int id, AlunoDTO Aluno)
         {
-            if (id != livro.Id)
+            if (id != Aluno.Id)
             {
                 return BadRequest();
             }
 
-            _dbcontext.Entry(livro).State = EntityState.Modified;
+            _dbcontext.Entry(Aluno).State = EntityState.Modified;
 
             try
             {
@@ -70,7 +70,7 @@ namespace app.Controllers
             }
             catch (DbUpdateConcurrencyException)
             {
-                if (!LivroExists(id))
+                if (!AlunoExists(id))
                 {
                     return NotFound();
                 }
@@ -83,26 +83,25 @@ namespace app.Controllers
             return NoContent();
         }
 
-        // DELETE: api/Livro/5
+        // DELETE: api/Aluno/5
         [HttpDelete("{id}")]
-        public async Task<IActionResult> DeleteLivro(long id)
+        public async Task<IActionResult> DeleteAluno(int id)
         {
-            var livro = await _dbcontext.Livros.FindAsync(id);
-            if (livro == null)
+            var Aluno = await _dbcontext.Alunos.FindAsync(id);
+            if (Aluno == null)
             {
                 return NotFound();
             }
 
-            _dbcontext.Livros.Remove(livro);
+            _dbcontext.Alunos.Remove(Aluno);
             await _dbcontext.SaveChangesAsync();
 
             return NoContent();
         }
 
-
-        private bool LivroExists(int id)
+        private bool AlunoExists(int id)
         {
-            return _dbcontext.Livros.Any(e => e.Id == id);
+            return _dbcontext.Alunos.Any(e => e.Id == id);
         }
     }
 }

@@ -1,6 +1,6 @@
 using System;
 using System.Diagnostics;
-using app.BE;
+
 using app.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
@@ -11,29 +11,28 @@ using Microsoft.Extensions.Configuration;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Services.AddScoped<AppDbContext>(provider =>
-{
-    var configuration = provider.GetService<IConfiguration>();
-    return new AppDbContext(configuration);
-});
+builder.Services.AddDbContext<AppDbContext>(options =>
+    options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
+
+
 
 builder.Services.AddDbContext<AuthDbContext>(options =>
-    options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection"))
-);
+    options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
+
+builder.Services.AddIdentity<IdentityUser, IdentityRole>()
+    .AddEntityFrameworkStores<AuthDbContext>() // Usar AuthDbContext para Identity
+    .AddDefaultTokenProviders();
+
 
 
 builder.Services.AddAuthorization();
 
-builder.Services.AddIdentity<IdentityUser, IdentityRole>().AddEntityFrameworkStores<AuthDbContext>().AddDefaultTokenProviders();
 
-builder.Services.AddScoped<AuthBE>();
 
-builder.Services.AddScoped<UserBE>();
-builder.Services.AddScoped<LivroBE>();
-builder.Services.AddScoped<AlunoBE>();
-builder.Services.AddScoped<EmprestimoBE>();
+
 
 builder.Services.AddControllers();
+
 
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>

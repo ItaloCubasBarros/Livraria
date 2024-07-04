@@ -1,110 +1,24 @@
-﻿using System;
-using System.Data;
+﻿using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
-using Npgsql;
-using System.Threading.Tasks;
+using app.DTO.UserDTO;
+using app.DTO; // Importe a entidade ApplicationUser
 
 namespace app.Data
 {
-    public class AppDbContext
+    public class AppDbContext : DbContext
     {
-        private readonly string _connectionString;
-        private NpgsqlConnection _connection;
-        private NpgsqlTransaction _transaction;
+    
 
-        public AppDbContext(IConfiguration configuration)
+
+        public AppDbContext(DbContextOptions<AppDbContext> options) : base(options)
         {
-            _connectionString = configuration.GetConnectionString("DefaultConnection");
-            _connection = new NpgsqlConnection(_connectionString);
+
         }
 
-        public void OpenConnection()
-        {
-            if (_connection.State != ConnectionState.Open)
-            {
-                _connection.Open();
-            }
-        }
+        public DbSet<UserDTO> Users { get; set; }
+        public DbSet<LivroDTO> Livros { get; set; }
+        public DbSet<EmprestimoDTO> Emprestimos { get; set; }
+        public DbSet<AlunoDTO> Alunos { get; set; }
 
-        public void BeginTransaction()
-        {
-            if (_connection.State != ConnectionState.Open)
-                _connection.Open();
-
-            _transaction = _connection.BeginTransaction();
-        }
-
-        public void Commit()
-        {
-            _transaction?.Commit();
-            CloseConnection();
-        }
-
-        public bool TransactionIsActive()
-        {
-            return _transaction != null && _transaction.Connection != null;
-        }
-
-        public void Rollback()
-        {
-            if (_transaction != null && _transaction.Connection != null)
-            {
-                _transaction.Rollback();
-            }
-            CloseConnection();
-        }
-
-        public void CloseConnection()
-        {
-            if (_connection.State != ConnectionState.Closed)
-                _connection.Close();
-        }
-
-        public async Task<DataTable> ExecuteQuery(string sql, NpgsqlParameter[]? param = null)
-        {
-            OpenConnection();  // Ensure connection is open
-            using (var cmd = new NpgsqlCommand(sql, _connection, _transaction))
-            {
-                if (param != null)
-                {
-                    cmd.Parameters.AddRange(param);
-                }
-
-                using (var reader = await cmd.ExecuteReaderAsync())
-                {
-                    var result = new DataTable();
-                    result.Load(reader);
-                    return result;
-                }
-            }
-        }
-
-        public async Task<int> ExecuteNonQuery(string sql, NpgsqlParameter[]? param = null)
-        {
-            OpenConnection();  // Ensure connection is open
-            using (var cmd = new NpgsqlCommand(sql, _connection, _transaction))
-            {
-                if (param != null)
-                {
-                    cmd.Parameters.AddRange(param);
-                }
-
-                return await cmd.ExecuteNonQueryAsync();
-            }
-        }
-
-        public async Task<object?> ExecuteScalar(string sql, NpgsqlParameter[]? param = null)
-        {
-            OpenConnection();  // Ensure connection is open
-            using (var cmd = new NpgsqlCommand(sql, _connection, _transaction))
-            {
-                if (param != null)
-                {
-                    cmd.Parameters.AddRange(param);
-                }
-
-                return await cmd.ExecuteScalarAsync();
-            }
-        }
     }
 }

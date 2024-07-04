@@ -1,39 +1,31 @@
-﻿using app.BE;
-using Microsoft.AspNetCore.Authentication;
-using Microsoft.AspNetCore.Mvc;
+﻿using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Identity;
-using Microsoft.IdentityModel.Tokens;
-using Microsoft.AspNetCore.Authorization;
-using System.IdentityModel.Tokens.Jwt;
-using System.Security.Claims;
-using System.Text;
+using app.Data;
 using app.DTO.UserDTO;
+using Microsoft.EntityFrameworkCore;
+using System;
+using System.Linq;
+using System.Threading.Tasks;
+using Microsoft.AspNetCore.Authorization;
 
 namespace app.Controllers
 {
-
-    public class AuthController : Controller
+    [Route("api/[controller]")]
+    [ApiController]
+    public class AuthController : ControllerBase
     {
-        private readonly AuthBE authService;
+        private readonly UserManager<IdentityUser> _userManager;
+        private readonly SignInManager<IdentityUser> _signInManager;
+        private readonly RoleManager<IdentityRole> _roleManager;
+        private readonly AuthDbContext _authDbContext;
 
-        public AuthController(AuthBE serv)
+        public AuthController(UserManager<IdentityUser> userManager, SignInManager<IdentityUser> signInManager, RoleManager<IdentityRole> roleManager, AuthDbContext authDbContext)
         {
-            authService = serv;
+            _userManager = userManager;
+            _signInManager = signInManager;
+            _roleManager = roleManager;
+            _authDbContext = authDbContext;
         }
-
-        private string ExtractAuthToken()
-        {
-            if (HttpContext.Request.Headers.TryGetValue("Authorization", out var authHeader))
-            {
-                var tokenParts = authHeader.ToString().Split(' ');
-                if (tokenParts.Length == 2 && tokenParts[0].Equals("Bearer", StringComparison.OrdinalIgnoreCase))
-                {
-                    return tokenParts[1].Trim('"');
-                }
-            }
-            return null;
-        }
-
 
         [HttpPost]
         [Route("register")]
@@ -41,17 +33,18 @@ namespace app.Controllers
         {
             try
             {
-                //var token = ExtractAuthToken();
-                //UserValidationResponse userLogado = await authService.CheckUser(token);
-                //if (userLogado == null || !userLogado.IsAuthenticated)
-                //{
-                //    return BadRequest(new { Message = "Usuário não autenticado!" });
-                //}
-                
-                var response = await authService.RegisterNewUser(user);
+                var newUser = new IdentityUser { UserName = user.UserName, Email = user.Email };
+                var result = await _userManager.CreateAsync(newUser, user.Password);
 
-                if (response.ErrorMessages != null || !string.IsNullOrEmpty(response.ErrorMessages))
-                    return BadRequest(response.ErrorMessages);
+                if (!result.Succeeded)
+                {
+                    return BadRequest(result.Errors);
+                }
+
+                if (!string.IsNullOrEmpty(user.RoleName))
+                {
+                    await _userManager.AddToRoleAsync(newUser, user.RoleName);
+                }
 
                 return Ok(new { Message = "Usuário cadastrado com sucesso!" });
             }
@@ -67,11 +60,17 @@ namespace app.Controllers
         {
             try
             {
-                UserValidationResponse obj = await authService.Authenticate(user);
-                if (obj != null)
-                    return Ok(new { User = obj, Token = obj.Token, Message = "Usuário autenticado com sucesso!" });
+                var result = await _signInManager.PasswordSignInAsync(user.Email, user.Password, false, false);
+
+                if (result.Succeeded)
+                {
+                    var appUser = await _userManager.FindByEmailAsync(user.Email);
+                    return Ok(new { User = appUser, Message = "Usuário autenticado com sucesso!" });
+                }
                 else
+                {
                     return BadRequest(new { Message = "Usuário ou senha incorretos!" });
+                }
             }
             catch (Exception ex)
             {
@@ -86,18 +85,21 @@ namespace app.Controllers
             try
             {
                 var token = ExtractAuthToken();
-                UserValidationResponse userLogado = await authService.CheckUser(token);
-                if (userLogado == null || !userLogado.IsAuthenticated)
+                var userId = ValidateJwtToken(token);
+                var appUser = await _userManager.FindByIdAsync(userId);
+                if (appUser == null)
                 {
                     return BadRequest(new { Message = "Usuário não autenticado!" });
                 }
 
-                var response = await authService.ChangePassword(user);
+                var result = await _userManager.ChangePasswordAsync(appUser, user.CurrentPassword, user.NewPassword);
 
-                if (response.Succeeded == false)
-                    return BadRequest(response.Errors);
+                if (!result.Succeeded)
+                {
+                    return BadRequest(result.Errors);
+                }
 
-                return Ok(response);
+                return Ok(new { Message = "Senha alterada com sucesso!" });
             }
             catch (Exception ex)
             {
@@ -105,7 +107,6 @@ namespace app.Controllers
             }
         }
 
-        //update user
         [HttpPatch]
         [Route("UpdateUser")]
         public async Task<IActionResult> UpdateUser([FromBody] UserDTO user)
@@ -113,16 +114,22 @@ namespace app.Controllers
             try
             {
                 var token = ExtractAuthToken();
-                UserValidationResponse userLogado = await authService.CheckUser(token);
-                if (userLogado == null || !userLogado.IsAuthenticated)
+                var userId = ValidateJwtToken(token);
+                var appUser = await _userManager.FindByIdAsync(userId);
+                if (appUser == null)
                 {
                     return BadRequest(new { Message = "Usuário não autenticado!" });
                 }
 
-                var response = await authService.UpdateUser(user);
+                appUser.Email = user.Email;
+                appUser.PhoneNumber = user.PhoneNumber;
 
-                if (response.ErrorMessages != null || !string.IsNullOrEmpty(response.ErrorMessages))
-                    return BadRequest(response.ErrorMessages);
+                var result = await _userManager.UpdateAsync(appUser);
+
+                if (!result.Succeeded)
+                {
+                    return BadRequest(result.Errors);
+                }
 
                 return Ok(new { Message = "Usuário atualizado com sucesso!" });
             }
@@ -130,7 +137,7 @@ namespace app.Controllers
             {
                 return BadRequest(ex.Message);
             }
-        }   
+        }
 
         [HttpGet]
         [Route("GetAllUsers")]
@@ -139,17 +146,16 @@ namespace app.Controllers
             try
             {
                 var token = ExtractAuthToken();
-
-
-                UserValidationResponse userLogado = await authService.CheckUser(token);
-                if (userLogado == null || !userLogado.IsAuthenticated)
+                var userId = ValidateJwtToken(token);
+                var appUser = await _userManager.FindByIdAsync(userId);
+                if (appUser == null)
                 {
                     return BadRequest(new { Message = "Usuário não autenticado!" });
                 }
 
-                var response = await authService.GetAllUsers();
+                var users = await _authDbContext.Users.ToListAsync();
 
-                return Ok(response);
+                return Ok(users);
             }
             catch (Exception ex)
             {
@@ -161,20 +167,29 @@ namespace app.Controllers
         [Route("CreateRoles")]
         public async Task<IActionResult> CreateRoles([FromBody] UserRolesDTO userRolesDTO)
         {
-
             try
             {
                 var token = ExtractAuthToken();
-                UserValidationResponse userLogado = await authService.CheckUser(token);
-                if (userLogado == null || !userLogado.IsAuthenticated)
+                var userId = ValidateJwtToken(token);
+                var appUser = await _userManager.FindByIdAsync(userId);
+                if (appUser == null)
                 {
                     return BadRequest(new { Message = "Usuário não autenticado!" });
                 }
 
-                var response = await authService.CreateUserRoles(userRolesDTO);
+                if (!await _roleManager.RoleExistsAsync(userRolesDTO.Name))
+                {
+                    var role = new IdentityRole
+                    {
+                        Name = userRolesDTO.Name
+                    };
+                    var result = await _roleManager.CreateAsync(role);
 
-                if (response.ErrorMessages != null || !string.IsNullOrEmpty(response.ErrorMessages))
-                    return BadRequest(response.ErrorMessages);
+                    if (!result.Succeeded)
+                    {
+                        return BadRequest(result.Errors);
+                    }
+                }
 
                 return Ok(new { Message = "Perfil cadastrado com sucesso!" });
             }
@@ -184,7 +199,6 @@ namespace app.Controllers
             }
         }
 
-        //get all roles
         [HttpGet]
         [Route("GetAllRoles")]
         public async Task<IActionResult> GetAllRoles()
@@ -192,20 +206,33 @@ namespace app.Controllers
             try
             {
                 var token = ExtractAuthToken();
-                UserValidationResponse userLogado = await authService.CheckUser(token);
-                if (userLogado == null || !userLogado.IsAuthenticated)
+                var userId = ValidateJwtToken(token);
+                var appUser = await _userManager.FindByIdAsync(userId);
+                if (appUser == null)
                 {
                     return BadRequest(new { Message = "Usuário não autenticado!" });
                 }
 
-                var response = await authService.GetAllRoles();
+                var roles = await _roleManager.Roles.ToListAsync();
 
-                return Ok(response);
+                return Ok(roles);
             }
             catch (Exception ex)
             {
                 return BadRequest(ex.Message);
             }
+        }
+
+        private string ExtractAuthToken()
+        {
+            var token = Request.Headers["Authorization"].FirstOrDefault()?.Split(" ").Last();
+            return token ?? "";
+        }
+
+        private string ValidateJwtToken(string token)
+        {
+            // Implemente a lógica de validação de token JWT aqui
+            return "user_id_from_token";
         }
     }
 }
